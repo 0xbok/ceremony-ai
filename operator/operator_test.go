@@ -31,18 +31,21 @@ func TestOperator(t *testing.T) {
 		newTaskCreatedLog := &cstaskmanager.ContractIncredibleSquaringTaskManagerNewTaskCreated{
 			TaskIndex: taskIndex,
 			Task: cstaskmanager.IIncredibleSquaringTaskManagerTask{
-				NumberToBeSquared:         numberToBeSquared,
+				InputHash:                 numberToBeSquared,
 				TaskCreatedBlock:          1000,
 				QuorumNumbers:             aggtypes.QUORUM_NUMBERS.UnderlyingType(),
 				QuorumThresholdPercentage: uint32(aggtypes.QUORUM_THRESHOLD_NUMERATOR),
 			},
 			Raw: types.Log{},
 		}
-		got := operator.ProcessNewTaskCreatedLog(newTaskCreatedLog)
+		got, err := operator.ProcessNewTaskCreatedLog(newTaskCreatedLog)
+		if err != nil {
+			t.Errorf("input hash mismatch: %v", err)
+		}
 		numberSquared := big.NewInt(0).Mul(numberToBeSquared, numberToBeSquared)
 		want := &cstaskmanager.IIncredibleSquaringTaskManagerTaskResponse{
 			ReferenceTaskIndex: taskIndex,
-			NumberSquared:      numberSquared,
+			OutputHash:         numberSquared,
 		}
 		assert.Equal(t, got, want)
 	})
@@ -54,7 +57,7 @@ func TestOperator(t *testing.T) {
 		newTaskCreatedEvent := &cstaskmanager.ContractIncredibleSquaringTaskManagerNewTaskCreated{
 			TaskIndex: taskIndex,
 			Task: cstaskmanager.IIncredibleSquaringTaskManagerTask{
-				NumberToBeSquared:         numberToBeSquared,
+				InputHash:                 numberToBeSquared,
 				TaskCreatedBlock:          1000,
 				QuorumNumbers:             aggtypes.QUORUM_NUMBERS.UnderlyingType(),
 				QuorumThresholdPercentage: uint32(aggtypes.QUORUM_THRESHOLD_NUMERATOR),
@@ -70,7 +73,7 @@ func TestOperator(t *testing.T) {
 		signedTaskResponse := &aggregator.SignedTaskResponse{
 			TaskResponse: cstaskmanager.IIncredibleSquaringTaskManagerTaskResponse{
 				ReferenceTaskIndex: taskIndex,
-				NumberSquared:      big.NewInt(0).Mul(numberToBeSquared, numberToBeSquared),
+				OutputHash:         big.NewInt(0).Mul(numberToBeSquared, numberToBeSquared),
 			},
 			BlsSignature: bls.Signature{
 				G1Point: bls.NewG1Point(X, Y),

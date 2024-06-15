@@ -13,7 +13,7 @@ import (
 
 func MockSendNewTaskNumberToSquareCall(blockNum, taskNum, numberToSquare uint32) (cstaskmanager.IIncredibleSquaringTaskManagerTask, uint32, error) {
 	task := cstaskmanager.IIncredibleSquaringTaskManagerTask{
-		NumberToBeSquared:         big.NewInt(int64(numberToSquare)),
+		InputHash:                 big.NewInt(int64(numberToSquare)),
 		TaskCreatedBlock:          blockNum,
 		QuorumNumbers:             types.QUORUM_NUMBERS.UnderlyingType(),
 		QuorumThresholdPercentage: uint32(types.QUORUM_THRESHOLD_NUMERATOR),

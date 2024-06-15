@@ -128,11 +128,13 @@ func (agg *Aggregator) Start(ctx context.Context) error {
 	ticker := time.NewTicker(10 * time.Second)
 	agg.logger.Infof("Aggregator set to send new task every 10 seconds...")
 	defer ticker.Stop()
-	taskNum := int64(0)
+	taskNum := "37847055976686922046543980229806469356225996398808813210124851695471706448519"
 	// ticker doesn't tick immediately, so we send the first task here
 	// see https://github.com/golang/go/issues/17601
-	_ = agg.sendNewTask(big.NewInt(taskNum))
-	taskNum++
+	inputHash := big.NewInt(0)
+	inputHash.SetString(taskNum, 10)
+	_ = agg.sendNewTask(inputHash)
+	// taskNum++
 
 	for {
 		select {
@@ -142,8 +144,8 @@ func (agg *Aggregator) Start(ctx context.Context) error {
 			agg.logger.Info("Received response from blsAggregationService", "blsAggServiceResp", blsAggServiceResp)
 			agg.sendAggregatedResponseToContract(blsAggServiceResp)
 		case <-ticker.C:
-			err := agg.sendNewTask(big.NewInt(taskNum))
-			taskNum++
+			err := agg.sendNewTask(inputHash)
+			// taskNum++
 			if err != nil {
 				// we log the errors inside sendNewTask() so here we just continue to the next task
 				continue

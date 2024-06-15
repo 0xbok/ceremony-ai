@@ -136,8 +136,8 @@ func (c *Challenger) processTaskResponseLog(taskResponseLog *cstaskmanager.Contr
 }
 
 func (c *Challenger) callChallengeModule(taskIndex uint32) error {
-	numberToBeSquared := c.tasks[taskIndex].NumberToBeSquared
-	answerInResponse := c.taskResponses[taskIndex].TaskResponse.NumberSquared
+	numberToBeSquared := c.tasks[taskIndex].InputHash
+	answerInResponse := c.taskResponses[taskIndex].TaskResponse.OutputHash
 	trueAnswer := numberToBeSquared.Exp(numberToBeSquared, big.NewInt(2), nil)
 
 	// checking if the answer in the response submitted by aggregator is correct

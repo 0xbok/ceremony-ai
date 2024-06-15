@@ -2,6 +2,7 @@ package operator
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/big"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/prometheus/client_golang/prometheus"
+	"golang.org/x/crypto/sha3"
 
 	"github.com/Layr-Labs/incredible-squaring-avs/aggregator"
 	cstaskmanager "github.com/Layr-Labs/incredible-squaring-avs/contracts/bindings/IncredibleSquaringTaskManager"
@@ -296,7 +298,10 @@ func (o *Operator) Start(ctx context.Context) error {
 			sub = o.avsSubscriber.SubscribeToNewTasks(o.newTaskCreatedChan)
 		case newTaskCreatedLog := <-o.newTaskCreatedChan:
 			o.metrics.IncNumTasksReceived()
-			taskResponse := o.ProcessNewTaskCreatedLog(newTaskCreatedLog)
+			taskResponse, err := o.ProcessNewTaskCreatedLog(newTaskCreatedLog)
+			if err != nil {
+				continue
+			}
 			signedTaskResponse, err := o.SignTaskResponse(taskResponse)
 			if err != nil {
 				continue
@@ -308,21 +313,38 @@ func (o *Operator) Start(ctx context.Context) error {
 
 // Takes a NewTaskCreatedLog struct as input and returns a TaskResponseHeader struct.
 // The TaskResponseHeader struct is the struct that is signed and sent to the contract as a task response.
-func (o *Operator) ProcessNewTaskCreatedLog(newTaskCreatedLog *cstaskmanager.ContractIncredibleSquaringTaskManagerNewTaskCreated) *cstaskmanager.IIncredibleSquaringTaskManagerTaskResponse {
+func (o *Operator) ProcessNewTaskCreatedLog(newTaskCreatedLog *cstaskmanager.ContractIncredibleSquaringTaskManagerNewTaskCreated) (*cstaskmanager.IIncredibleSquaringTaskManagerTaskResponse, error) {
 	o.logger.Debug("Received new task", "task", newTaskCreatedLog)
 	o.logger.Info("Received new task",
-		"numberToBeSquared", newTaskCreatedLog.Task.NumberToBeSquared,
+		"inputHash", newTaskCreatedLog.Task.InputHash,
 		"taskIndex", newTaskCreatedLog.TaskIndex,
 		"taskCreatedBlock", newTaskCreatedLog.Task.TaskCreatedBlock,
 		"quorumNumbers", newTaskCreatedLog.Task.QuorumNumbers,
 		"QuorumThresholdPercentage", newTaskCreatedLog.Task.QuorumThresholdPercentage,
 	)
-	numberSquared := big.NewInt(0).Exp(newTaskCreatedLog.Task.NumberToBeSquared, big.NewInt(2), nil)
+	input := "hello how are you"
+	hasher := sha3.NewLegacyKeccak256()
+	hasher.Write([]byte(input))
+	hashBytes := hasher.Sum(nil)
+	hashBigInt := new(big.Int).SetBytes(hashBytes)
+	o.logger.Info(hashBigInt.String())
+
+	if hashBigInt.Cmp(newTaskCreatedLog.Task.InputHash) != 0 {
+		o.logger.Error("keccak(input) != inputHash", input, hashBigInt.String(), newTaskCreatedLog.Task.InputHash.String())
+		return nil, errors.New("input hash mismatch")
+	}
+
+	output := "i am fine"
+	hasher = sha3.NewLegacyKeccak256()
+	hasher.Write([]byte(output))
+	hashBytes = hasher.Sum(nil)
+	outputHash := new(big.Int).SetBytes(hashBytes)
+
 	taskResponse := &cstaskmanager.IIncredibleSquaringTaskManagerTaskResponse{
 		ReferenceTaskIndex: newTaskCreatedLog.TaskIndex,
-		NumberSquared:      numberSquared,
+		OutputHash:         outputHash,
 	}
-	return taskResponse
+	return taskResponse, nil
 }
 
 func (o *Operator) SignTaskResponse(taskResponse *cstaskmanager.IIncredibleSquaringTaskManagerTaskResponse) (*aggregator.SignedTaskResponse, error) {
