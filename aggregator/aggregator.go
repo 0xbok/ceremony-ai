@@ -2,11 +2,14 @@ package aggregator
 
 import (
 	"context"
+	"encoding/json"
 	"math/big"
+	"net/http"
 	"sync"
 	"time"
 
 	"github.com/Layr-Labs/eigensdk-go/logging"
+	"golang.org/x/crypto/sha3"
 
 	"github.com/Layr-Labs/eigensdk-go/chainio/clients"
 	sdkclients "github.com/Layr-Labs/eigensdk-go/chainio/clients"
@@ -119,22 +122,60 @@ func NewAggregator(c *config.Config) (*Aggregator, error) {
 	}, nil
 }
 
+// Define a struct to match the expected JSON structure
+type UserRequestData struct {
+	Id          string `json:"Id"`
+	UserRequest string `json:"userRequest"`
+}
+
+func (agg *Aggregator) startUserRequestServer(ctx context.Context) error {
+	http.HandleFunc("/user-request", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			http.Error(w, "Method is not supported.", http.StatusMethodNotAllowed)
+			return
+		}
+
+		// Decode JSON body into struct
+		var data UserRequestData
+		err := json.NewDecoder(r.Body).Decode(&data)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		idBigInt := big.NewInt(0)
+		if _, valid := idBigInt.SetString(data.Id, 10); !valid {
+			http.Error(w, "Invalid ID format", http.StatusBadRequest)
+			return
+		}
+
+		hasher := sha3.NewLegacyKeccak256()
+		hasher.Write([]byte(data.UserRequest))
+		hashBytes := hasher.Sum(nil)
+		hashBigInt := new(big.Int).SetBytes(hashBytes)
+
+		agg.sendNewTask(hashBigInt)
+
+		// Log or use the request data as needed
+		agg.logger.Info("Received ID: %s, User Request: %s", idBigInt.String(), data.UserRequest)
+
+		// Response to the client
+		w.Write([]byte("Request processed successfully."))
+	})
+
+	err := http.ListenAndServe("localhost:8091", nil)
+	if err != nil {
+		agg.logger.Fatal("ListenAndServe UserRequestServer", "err", err)
+	}
+
+	return nil
+}
+
 func (agg *Aggregator) Start(ctx context.Context) error {
 	agg.logger.Infof("Starting aggregator.")
 	agg.logger.Infof("Starting aggregator rpc server.")
 	go agg.startServer(ctx)
-
-	// TODO(soubhik): refactor task generation/sending into a separate function that we can run as goroutine
-	ticker := time.NewTicker(10 * time.Second)
-	agg.logger.Infof("Aggregator set to send new task every 10 seconds...")
-	defer ticker.Stop()
-	taskNum := "37847055976686922046543980229806469356225996398808813210124851695471706448519"
-	// ticker doesn't tick immediately, so we send the first task here
-	// see https://github.com/golang/go/issues/17601
-	inputHash := big.NewInt(0)
-	inputHash.SetString(taskNum, 10)
-	_ = agg.sendNewTask(inputHash)
-	// taskNum++
+	go agg.startUserRequestServer(ctx)
 
 	for {
 		select {
@@ -143,13 +184,6 @@ func (agg *Aggregator) Start(ctx context.Context) error {
 		case blsAggServiceResp := <-agg.blsAggregationService.GetResponseChannel():
 			agg.logger.Info("Received response from blsAggregationService", "blsAggServiceResp", blsAggServiceResp)
 			agg.sendAggregatedResponseToContract(blsAggServiceResp)
-		case <-ticker.C:
-			err := agg.sendNewTask(inputHash)
-			// taskNum++
-			if err != nil {
-				// we log the errors inside sendNewTask() so here we just continue to the next task
-				continue
-			}
 		}
 	}
 }

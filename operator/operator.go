@@ -1,9 +1,12 @@
 package operator
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math/big"
 	"os"
 
@@ -18,6 +21,8 @@ import (
 	"github.com/Layr-Labs/incredible-squaring-avs/core/chainio"
 	"github.com/Layr-Labs/incredible-squaring-avs/metrics"
 	"github.com/Layr-Labs/incredible-squaring-avs/types"
+
+	"net/http"
 
 	"github.com/Layr-Labs/eigensdk-go/chainio/clients"
 	sdkelcontracts "github.com/Layr-Labs/eigensdk-go/chainio/clients/elcontracts"
@@ -322,6 +327,7 @@ func (o *Operator) ProcessNewTaskCreatedLog(newTaskCreatedLog *cstaskmanager.Con
 		"quorumNumbers", newTaskCreatedLog.Task.QuorumNumbers,
 		"QuorumThresholdPercentage", newTaskCreatedLog.Task.QuorumThresholdPercentage,
 	)
+	// call aggregator api to fetch pre-image input string
 	input := "hello how are you"
 	hasher := sha3.NewLegacyKeccak256()
 	hasher.Write([]byte(input))
@@ -334,7 +340,27 @@ func (o *Operator) ProcessNewTaskCreatedLog(newTaskCreatedLog *cstaskmanager.Con
 		return nil, errors.New("input hash mismatch")
 	}
 
-	output := "i am fine"
+	// run ML model
+	postBody, _ := json.Marshal(map[string]string{
+		"message": "Hello, how are you?",
+	})
+	responseBody := bytes.NewBuffer(postBody)
+	resp, err := http.Post("http://127.0.0.1:8080/test-post", "application/json", responseBody)
+
+	if err != nil {
+		o.logger.Error("http post error %v", err)
+		return nil, errors.New("http post error")
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		o.logger.Error("body read error %v", err)
+		return nil, errors.New("body read error")
+	}
+	output := string(body)
+
+	// send this output string to aggregator
+	// send output hash to contract
 	hasher = sha3.NewLegacyKeccak256()
 	hasher.Write([]byte(output))
 	hashBytes = hasher.Sum(nil)

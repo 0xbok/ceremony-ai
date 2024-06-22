@@ -1,0 +1,2 @@
+deployed contract address: credible_squaring_avs_deployment_output.json
+
