@@ -327,29 +327,33 @@ func (o *Operator) ProcessNewTaskCreatedLog(newTaskCreatedLog *cstaskmanager.Con
 		"quorumNumbers", newTaskCreatedLog.Task.QuorumNumbers,
 		"QuorumThresholdPercentage", newTaskCreatedLog.Task.QuorumThresholdPercentage,
 	)
-	// call aggregator api to fetch pre-image input string
-	input := "hello how are you"
-	hasher := sha3.NewLegacyKeccak256()
-	hasher.Write([]byte(input))
-	hashBytes := hasher.Sum(nil)
-	hashBigInt := new(big.Int).SetBytes(hashBytes)
-	o.logger.Info(hashBigInt.String())
 
-	if hashBigInt.Cmp(newTaskCreatedLog.Task.InputHash) != 0 {
-		o.logger.Error("keccak(input) != inputHash", input, hashBigInt.String(), newTaskCreatedLog.Task.InputHash.String())
-		return nil, errors.New("input hash mismatch")
+	url := fmt.Sprintf("http://localhost:8092/operator-request?Id=%s", newTaskCreatedLog.Task.InputHash.String())
+
+	// call aggregator api to fetch pre-image input string
+	response, err := http.Get(url)
+	if err != nil {
+		o.logger.Error("operator-request call failed")
+		return nil, err
+	}
+	defer response.Body.Close()
+	input, err := io.ReadAll(response.Body)
+	o.logger.Info("operator-request response", string(input))
+	if err != nil {
+		o.logger.Error("operator-request parsing failed")
+		return nil, err
 	}
 
 	// run ML model
 	postBody, _ := json.Marshal(map[string]string{
-		"message": "Hello, how are you?",
+		"message": string(input),
 	})
 	responseBody := bytes.NewBuffer(postBody)
 	resp, err := http.Post("http://127.0.0.1:8080/test-post", "application/json", responseBody)
 
 	if err != nil {
-		o.logger.Error("http post error %v", err)
-		return nil, errors.New("http post error")
+		o.logger.Error("test-post error %v", err)
+		return nil, errors.New("test-post error")
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
@@ -359,11 +363,24 @@ func (o *Operator) ProcessNewTaskCreatedLog(newTaskCreatedLog *cstaskmanager.Con
 	}
 	output := string(body)
 
+	postBody, _ = json.Marshal(map[string]string{
+		"Id":          newTaskCreatedLog.Task.InputHash.String(),
+		"userRequest": output,
+	})
+	o.logger.Info("custom", newTaskCreatedLog.Task.InputHash.String())
+	responseBody = bytes.NewBuffer(postBody)
+	_, err = http.Post("http://127.0.0.1:8093/operator-response", "application/json", responseBody)
+
+	if err != nil {
+		o.logger.Error("operator-response error %v", err)
+		return nil, errors.New("operator-response error")
+	}
+
 	// send this output string to aggregator
 	// send output hash to contract
-	hasher = sha3.NewLegacyKeccak256()
+	hasher := sha3.NewLegacyKeccak256()
 	hasher.Write([]byte(output))
-	hashBytes = hasher.Sum(nil)
+	hashBytes := hasher.Sum(nil)
 	outputHash := new(big.Int).SetBytes(hashBytes)
 
 	taskResponse := &cstaskmanager.IIncredibleSquaringTaskManagerTaskResponse{

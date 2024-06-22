@@ -3,13 +3,13 @@ package aggregator
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"math/big"
 	"net/http"
 	"sync"
 	"time"
 
 	"github.com/Layr-Labs/eigensdk-go/logging"
-	"golang.org/x/crypto/sha3"
 
 	"github.com/Layr-Labs/eigensdk-go/chainio/clients"
 	sdkclients "github.com/Layr-Labs/eigensdk-go/chainio/clients"
@@ -122,11 +122,17 @@ func NewAggregator(c *config.Config) (*Aggregator, error) {
 	}, nil
 }
 
-// Define a struct to match the expected JSON structure
-type UserRequestData struct {
+type RequestData struct {
 	Id          string `json:"Id"`
 	UserRequest string `json:"userRequest"`
 }
+
+var (
+	inputs    = make(map[string]string)
+	outputs   = make(map[string]string)
+	muInputs  sync.RWMutex // Mutex to handle concurrent read/write to the map
+	muOutputs sync.RWMutex // Mutex to handle concurrent read/write to the map
+)
 
 func (agg *Aggregator) startUserRequestServer(ctx context.Context) error {
 	http.HandleFunc("/user-request", func(w http.ResponseWriter, r *http.Request) {
@@ -136,7 +142,7 @@ func (agg *Aggregator) startUserRequestServer(ctx context.Context) error {
 		}
 
 		// Decode JSON body into struct
-		var data UserRequestData
+		var data RequestData
 		err := json.NewDecoder(r.Body).Decode(&data)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -149,12 +155,17 @@ func (agg *Aggregator) startUserRequestServer(ctx context.Context) error {
 			return
 		}
 
-		hasher := sha3.NewLegacyKeccak256()
-		hasher.Write([]byte(data.UserRequest))
-		hashBytes := hasher.Sum(nil)
-		hashBigInt := new(big.Int).SetBytes(hashBytes)
+		// Store the request data
+		muInputs.Lock()
+		inputs[data.Id] = data.UserRequest
+		muInputs.Unlock()
 
-		agg.sendNewTask(hashBigInt)
+		// hasher := sha3.NewLegacyKeccak256()
+		// hasher.Write([]byte(data.UserRequest))
+		// hashBytes := hasher.Sum(nil)
+		// hashBigInt := new(big.Int).SetBytes(hashBytes)
+
+		agg.sendNewTask(idBigInt)
 
 		// Log or use the request data as needed
 		agg.logger.Info("Received ID: %s, User Request: %s", idBigInt.String(), data.UserRequest)
@@ -171,11 +182,125 @@ func (agg *Aggregator) startUserRequestServer(ctx context.Context) error {
 	return nil
 }
 
+func (agg *Aggregator) startOperatorPreImageServer(ctx context.Context) error {
+	http.HandleFunc("/operator-request", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			http.Error(w, "Method is not supported.", http.StatusMethodNotAllowed)
+			return
+		}
+
+		id := r.URL.Query().Get("Id")
+
+		if id == "" {
+			http.Error(w, "Id parameter is missing", http.StatusBadRequest)
+			return
+		}
+
+		muInputs.RLock()
+		userRequest, exists := inputs[id]
+		muInputs.RUnlock()
+
+		if !exists {
+			http.Error(w, "No entry found for given Id", http.StatusNotFound)
+			return
+		}
+
+		log.Printf("Fetched User Request for ID: %s", id)
+		w.Write([]byte(userRequest))
+	})
+
+	err := http.ListenAndServe("localhost:8092", nil)
+	if err != nil {
+		agg.logger.Fatal("ListenAndServe OperatorRequestServer", "err", err)
+	}
+
+	return nil
+}
+
+func (agg *Aggregator) startOperatorResponseServer(ctx context.Context) error {
+	http.HandleFunc("/operator-response", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			http.Error(w, "Method is not supported.", http.StatusMethodNotAllowed)
+			return
+		}
+
+		// Decode JSON body into struct
+		var data RequestData
+		err := json.NewDecoder(r.Body).Decode(&data)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		idBigInt := big.NewInt(0)
+		if _, valid := idBigInt.SetString(data.Id, 10); !valid {
+			http.Error(w, "Invalid ID format", http.StatusBadRequest)
+			return
+		}
+
+		// Store the request data
+		muOutputs.Lock()
+		outputs[data.Id] = data.UserRequest
+		muOutputs.Unlock()
+
+		// Log or use the request data as needed
+		agg.logger.Info("operator-response ID: %s, User Request: %s", idBigInt.String(), data.UserRequest)
+
+		// Response to the client
+		w.Write([]byte("Request processed successfully."))
+	})
+
+	err := http.ListenAndServe("localhost:8093", nil)
+	if err != nil {
+		agg.logger.Fatal("ListenAndServe operator-responseServer", "err", err)
+	}
+
+	return nil
+}
+
+func (agg *Aggregator) startUserResponseServer(ctx context.Context) error {
+	http.HandleFunc("/user-response", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			http.Error(w, "Method is not supported.", http.StatusMethodNotAllowed)
+			return
+		}
+
+		id := r.URL.Query().Get("Id")
+
+		if id == "" {
+			http.Error(w, "Id parameter is missing", http.StatusBadRequest)
+			return
+		}
+
+		muOutputs.RLock()
+		userResponse, exists := outputs[id]
+		muOutputs.RUnlock()
+
+		if !exists {
+			http.Error(w, "No entry found for given Id", http.StatusNotFound)
+			return
+		}
+
+		log.Printf("Fetched User Response for ID: %s", id)
+		w.Write([]byte(userResponse))
+	})
+
+	err := http.ListenAndServe("localhost:8094", nil)
+	if err != nil {
+		agg.logger.Fatal("ListenAndServe UserResponseServer", "err", err)
+	}
+
+	return nil
+}
+
 func (agg *Aggregator) Start(ctx context.Context) error {
 	agg.logger.Infof("Starting aggregator.")
 	agg.logger.Infof("Starting aggregator rpc server.")
 	go agg.startServer(ctx)
 	go agg.startUserRequestServer(ctx)
+	go agg.startOperatorPreImageServer(ctx)
+	go agg.startOperatorResponseServer(ctx)
+	go agg.startUserResponseServer(ctx)
 
 	for {
 		select {
