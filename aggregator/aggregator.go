@@ -123,8 +123,8 @@ func NewAggregator(c *config.Config) (*Aggregator, error) {
 }
 
 type RequestData struct {
-	Id          string `json:"Id"`
-	UserRequest string `json:"userRequest"`
+	Id          string `json:"user_id"`
+	UserRequest string `json:"message"`
 }
 
 var (
@@ -142,7 +142,8 @@ func (agg *Aggregator) startUserRequestServer(ctx context.Context) error {
 		// }
 
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
+		w.Header().Set("Access-Control-Allow-Methods", "*")
+		w.Header().Set("Access-Control-Allow-Headers", "*")
 
 		// Decode JSON body into struct
 		var data RequestData
@@ -269,9 +270,10 @@ func (agg *Aggregator) startUserResponseServer(ctx context.Context) error {
 		// }
 
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
+		w.Header().Set("Access-Control-Allow-Methods", "*")
+		w.Header().Set("Access-Control-Allow-Headers", "*")
 
-		id := r.URL.Query().Get("Id")
+		id := r.URL.Query().Get("user_id")
 
 		if id == "" {
 			http.Error(w, "Id parameter is missing", http.StatusBadRequest)

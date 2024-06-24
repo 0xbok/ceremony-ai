@@ -364,8 +364,8 @@ func (o *Operator) ProcessNewTaskCreatedLog(newTaskCreatedLog *cstaskmanager.Con
 	output := string(body)
 
 	postBody, _ = json.Marshal(map[string]string{
-		"Id":          newTaskCreatedLog.Task.InputHash.String(),
-		"userRequest": output,
+		"user_id": newTaskCreatedLog.Task.InputHash.String(),
+		"message": output,
 	})
 	o.logger.Info("custom", newTaskCreatedLog.Task.InputHash.String())
 	responseBody = bytes.NewBuffer(postBody)
