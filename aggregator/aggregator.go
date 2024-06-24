@@ -141,6 +141,8 @@ func (agg *Aggregator) startUserRequestServer(ctx context.Context) error {
 			return
 		}
 
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+
 		// Decode JSON body into struct
 		var data RequestData
 		err := json.NewDecoder(r.Body).Decode(&data)
@@ -264,6 +266,8 @@ func (agg *Aggregator) startUserResponseServer(ctx context.Context) error {
 			http.Error(w, "Method is not supported.", http.StatusMethodNotAllowed)
 			return
 		}
+
+		w.Header().Set("Access-Control-Allow-Origin", "*")
 
 		id := r.URL.Query().Get("Id")
 
