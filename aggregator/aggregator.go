@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Layr-Labs/eigensdk-go/logging"
+	"github.com/rs/cors"
 
 	"github.com/Layr-Labs/eigensdk-go/chainio/clients"
 	sdkclients "github.com/Layr-Labs/eigensdk-go/chainio/clients"
@@ -135,7 +136,8 @@ var (
 )
 
 func (agg *Aggregator) startUserRequestServer(ctx context.Context) error {
-	http.HandleFunc("/user-request", func(w http.ResponseWriter, r *http.Request) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/user-request", func(w http.ResponseWriter, r *http.Request) {
 		// if r.Method != "POST" {
 		// http.Error(w, "Method is not supported.", http.StatusMethodNotAllowed)
 		// 	return
@@ -178,7 +180,8 @@ func (agg *Aggregator) startUserRequestServer(ctx context.Context) error {
 		w.Write([]byte("Request processed successfully."))
 	})
 
-	err := http.ListenAndServe("localhost:8091", nil)
+	handler := cors.Default().Handler(mux)
+	err := http.ListenAndServe("localhost:8091", handler)
 	if err != nil {
 		agg.logger.Fatal("ListenAndServe UserRequestServer", "err", err)
 	}
@@ -263,7 +266,8 @@ func (agg *Aggregator) startOperatorResponseServer(ctx context.Context) error {
 }
 
 func (agg *Aggregator) startUserResponseServer(ctx context.Context) error {
-	http.HandleFunc("/user-response", func(w http.ResponseWriter, r *http.Request) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/user-response", func(w http.ResponseWriter, r *http.Request) {
 		// if r.Method != "GET" {
 		// 	http.Error(w, "Method is not supported.", http.StatusMethodNotAllowed)
 		// 	return
@@ -293,7 +297,8 @@ func (agg *Aggregator) startUserResponseServer(ctx context.Context) error {
 		w.Write([]byte(userResponse))
 	})
 
-	err := http.ListenAndServe("localhost:8094", nil)
+	handler := cors.Default().Handler(mux)
+	err := http.ListenAndServe("localhost:8094", handler)
 	if err != nil {
 		agg.logger.Fatal("ListenAndServe UserResponseServer", "err", err)
 	}
