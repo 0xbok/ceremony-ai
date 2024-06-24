@@ -136,12 +136,13 @@ var (
 
 func (agg *Aggregator) startUserRequestServer(ctx context.Context) error {
 	http.HandleFunc("/user-request", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "POST" {
-			http.Error(w, "Method is not supported.", http.StatusMethodNotAllowed)
-			return
-		}
+		// if r.Method != "POST" {
+		// http.Error(w, "Method is not supported.", http.StatusMethodNotAllowed)
+		// 	return
+		// }
 
 		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
 
 		// Decode JSON body into struct
 		var data RequestData
@@ -262,12 +263,13 @@ func (agg *Aggregator) startOperatorResponseServer(ctx context.Context) error {
 
 func (agg *Aggregator) startUserResponseServer(ctx context.Context) error {
 	http.HandleFunc("/user-response", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "GET" {
-			http.Error(w, "Method is not supported.", http.StatusMethodNotAllowed)
-			return
-		}
+		// if r.Method != "GET" {
+		// 	http.Error(w, "Method is not supported.", http.StatusMethodNotAllowed)
+		// 	return
+		// }
 
 		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
 
 		id := r.URL.Query().Get("Id")
 
